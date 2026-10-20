@@ -23,8 +23,8 @@ def make_basic_data():
 
 def make_basic_estimators():
     return [
-        LogisticRegression(max_iter=200, random_state=42),
-        RandomForestClassifier(n_estimators=15,random_state=42),
+        ('LR',LogisticRegression(max_iter=200, random_state=42)),
+        ('RF',RandomForestClassifier(n_estimators=15,random_state=42)),
     ]
 
 @pytest.fixture
@@ -72,5 +72,44 @@ def test_works_with_estimator_tuple():
     n_estimators = len(estimators)
     assert oof_probas.shape == (n_estimators, n_cases, n_classes)
 
+def test_bad_esimators_list():
+    estimators = [RandomForestClassifier(n_estimators=15, random_state=42), LogisticRegression(random_state=42)]
+    X, y = make_basic_data()
+    cv_folds = 5
+    pytest.raises(TypeError, lambda: generate_oof_probas(estimators, X, y, cv_folds))
 
+def test_bad_cv_folds(setup_basic_with_estimator):
+    cv_folds = 1
+    X, y, estimators = setup_basic_with_estimator
+    assert pytest.raises(ValueError, lambda: generate_oof_probas(estimators, X, y, cv_folds))
 
+def test_duplicate_estimator_name():
+    cv_folds = 5
+    estimators = [('Hello', LogisticRegression(random_state=42)),('Bye', RandomForestClassifier(n_estimators=15, random_state=42)),('Bye', LogisticRegression(random_state=42))]
+    X, y, = make_basic_data()
+    assert pytest.raises(ValueError, lambda: generate_oof_probas(estimators, X, y, cv_folds))
+
+def test_extreme_estimator_format():
+    estimators = [('Hello', LogisticRegression(random_state=42),3567, ('Bye', RandomForestClassifier(n_estimators=15, random_state=42),("Hi",[])),
+     ('Bye', LogisticRegression(random_state=42),12,()))]
+    X, y, = make_basic_data()
+    cv_folds = 5
+    assert pytest.raises(ValueError, lambda: generate_oof_probas(estimators, X, y, cv_folds))
+
+def test_bad_estimator_good_format(setup_basic_with_estimator):
+    cv_folds = 5
+    X, y, estimators = setup_basic_with_estimator
+    estimators.append(('Bad', 13))
+    assert pytest.raises(TypeError, lambda: generate_oof_probas(estimators, X, y, cv_folds))
+
+def test_bad_type_cv_folds(setup_basic_with_estimator):
+    cv_folds = "HI"
+    X, y, estimators = setup_basic_with_estimator
+    assert pytest.raises(TypeError, lambda: generate_oof_probas(estimators, X, y, cv_folds))
+
+def test_different_X_y_lengths():
+    cv_folds = 5
+    X = [[1,2,3],[3,4,5],[6,2,5],[7,2,8],[3,7,2],[4,6,8]]
+    y = [0,1,2,1,2,0,4]
+    estimators = make_basic_estimators()
+    assert pytest.raises(ValueError, lambda: generate_oof_probas(estimators, X, y, cv_folds))

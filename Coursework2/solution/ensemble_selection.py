@@ -7,7 +7,7 @@ from sklearn.exceptions import NotFittedError
 from sklearn.metrics import accuracy_score, log_loss
 from sklearn.utils.validation import check_is_fitted
 
-from pool import generate_oof_probas
+from pool import generate_oof_probas, log_loss_normalized
 
 class GreedyEnsembleSelector(ClassifierMixin, BaseEstimator):
 
@@ -65,8 +65,8 @@ class GreedyEnsembleSelector(ClassifierMixin, BaseEstimator):
             else:
                 eps = 1e-15
                 blended_probs = np.clip(blended_probs, eps, 1 - eps)
-                blended_probs = blended_probs / np.sum(blended_probs, axis=1, keepdims=True)
-                return log_loss(y, blended_probs, labels=self.classes_)
+                return log_loss_normalized(y, blended_probs, self.classes_)
+
 
         def has_improved(current, best):
             return (is_accuracy and current > best) or (not is_accuracy and current < best)

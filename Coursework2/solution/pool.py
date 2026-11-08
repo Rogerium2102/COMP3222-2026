@@ -65,5 +65,9 @@ def generate_oof_probas(
             for j, cls in enumerate(clf.classes_):
                 class_idx = np.where(classes == cls)[0][0]
                 oof_probas[i, test_idx, class_idx] = fold_probas[:, j]
-        scores[i] = log_loss(y, oof_probas[i], labels=classes)
+        scores[i] = log_loss_normalized(y, oof_probas[i], classes)
     return oof_probas, scores
+
+def log_loss_normalized(y, probs, classes):
+    blended_probs = probs / np.sum(probs, axis=1, keepdims=True)
+    return log_loss(y, blended_probs, labels=classes)

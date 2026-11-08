@@ -39,7 +39,7 @@ def generate_oof_probas(
     X = np.asarray(X)
     y = np.asarray(y)
     if len(X) != len(y):
-        raise ValueError("X and y must have same length")
+        raise ValueError("X and y must have the same length")
     if not isinstance(cv, int):
         raise TypeError("cv must be an integer")
     elif cv < 2:

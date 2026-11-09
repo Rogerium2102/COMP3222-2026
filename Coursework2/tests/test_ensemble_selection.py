@@ -64,8 +64,8 @@ def test_init_supported_metrics(estimators):
     assert selector_loss.metric == "log_loss"
 
 def test_init_invalid_metric(estimators):
-    with pytest.raises(ValueError, match="Metric roc_auc is not supported."):
-        GreedyEnsembleSelector(estimators, metric="roc_auc")
+    with pytest.raises(ValueError, match="Metric DUMMY is not supported."):
+        GreedyEnsembleSelector(estimators, metric="DUMMY")
 
 def test_not_fitted_error(estimators, binary_data):
     X, _ = binary_data
@@ -145,6 +145,35 @@ def test_greedy_selection_accuracy(mock_generate_oof, binary_data):
     assert selector.selected_names_ == ["good model"]
 
 @patch("ensemble_selection.generate_oof_probas")
+def test_greedy_selection_log_loss(mock_generate_oof, binary_data):
+    X,y = binary_data
+    n_samples = y.shape[0]
+
+    oof_A = np.zeros((n_samples, 2))
+    oof_A[np.arange(n_samples), y] = 0.99
+    oof_A[np.arange(n_samples),1 - y] = 0.01
+
+    oof_B = np.zeros((n_samples, 2))
+    oof_B[np.arange(n_samples),y] = 0.51
+    oof_B[np.arange(n_samples),1 - y] = 0.49
+
+    mock_generate_oof.return_value = (
+        [oof_B, oof_A],
+        np.array([0.5,0.5])
+    )
+
+    estimators = [
+        ("poor_predictor", PoorPredictor()),
+        ("good_predictor", PerfectPredictor())
+    ]
+
+    selector = GreedyEnsembleSelector(estimators, metric="log_loss", cv=3, max_ensemble_size=1)
+    selector.fit(X, y)
+
+    assert selector.selected_indices_ == [1]
+    assert selector.selected_names_ == ["good_predictor"]
+
+@patch("ensemble_selection.generate_oof_probas")
 def test_handling_raw_oof_structures(mock_generate_oof, binary_data):
     X, y = binary_data
     n_samples = X.shape[0]
@@ -171,3 +200,113 @@ def test_invalid_estimators_format_raises_error(binary_data):
     selector = GreedyEnsembleSelector(invalid_estimators, cv=3)
     with pytest.raises(TypeError):
         selector.fit(X, y)
+
+@patch("ensemble_selection.generate_oof_probas")
+def test_greedy_selection_roc_auc(mock_generate_oof, binary_data):
+    X, y = binary_data
+    n_samples = y.shape[0]
+
+    oof_A = np.zeros((n_samples, 2))
+    oof_A[np.arange(n_samples), y] = 0.1
+    oof_A[np.arange(n_samples),1 - y] = 0.9
+
+    oof_B = np.zeros((n_samples, 2))
+    oof_B[np.arange(n_samples),y] = 0.6
+    oof_B[np.arange(n_samples),1 - y] = 0.4
+
+    mock_generate_oof.return_value = (
+        [oof_A, oof_B],
+        np.array([0.5, 0.5])
+    )
+    estimators = [
+        ("bad", LogisticRegression()),
+        ("perfect", LogisticRegression()),
+    ]
+
+    selector = GreedyEnsembleSelector(estimators, metric="roc_auc", cv=3, max_ensemble_size=1)
+    selector.fit(X, y)
+
+    assert selector.selected_indices_ == [1]
+    assert selector.selected_names_ == ["perfect"]
+
+@patch("ensemble_selection.generate_oof_probas")
+def test_greedy_selection_roc_auc_multiclass(mock_generate_oof, multiclass_data):
+    X, y = multiclass_data
+    n_samples = y.shape[0]
+    n_classes = len(np.unique(y))
+
+    oof_random = np.ones((n_samples, n_classes)) / n_classes
+
+    oof_perfect = np.zeros((n_samples, n_classes))
+    oof_perfect[np.arange(n_samples), y] = 1.0
+
+    mock_generate_oof.return_value = (
+        [oof_random, oof_perfect],
+        np.array([0.33, 0.33])
+    )
+
+    estimators = [
+        ("random", LogisticRegression()),
+        ("perfect", LogisticRegression()),
+    ]
+
+    selector = GreedyEnsembleSelector(estimators, metric="roc_auc", cv=3, max_ensemble_size=1)
+    selector.fit(X, y)
+
+    assert selector.selected_indices_ == [1]
+    assert selector.selected_names_ == ["perfect"]
+
+@patch("ensemble_selection.generate_oof_probas")
+def test_greedy_selection_f1_score_binary(mock_generate_oof, binary_data):
+    X, y = binary_data
+    n_samples = y.shape[0]
+
+    oof_A = np.zeros((n_samples, 2))
+    oof_A[:, 0] = 1.0
+
+    oof_B = np.zeros((n_samples, 2))
+    oof_B[np.arange(n_samples), y] = 1.0
+
+    mock_generate_oof.return_value = (
+        [oof_A, oof_B],
+        np.array([0.5, 0.5])
+    )
+
+    estimators = [
+        ("zero", LogisticRegression()),
+        ("perfect",LogisticRegression()),
+    ]
+
+    selector = GreedyEnsembleSelector(estimators, metric="f1_score", cv=3, max_ensemble_size=1)
+    selector.fit(X, y)
+
+    assert selector.selected_indices_ == [1]
+    assert selector.selected_names_ == ["perfect"]
+
+@patch("ensemble_selection.generate_oof_probas")
+def test_greedy_selection_f1_score_multiclass(mock_generate_oof, multiclass_data):
+    X, y = multiclass_data
+    n_samples = y.shape[0]
+    n_classes = len(np.unique(y))
+
+    oof_zero = np.zeros((n_samples, n_classes))
+    oof_zero[:, 0 ] = 1.0
+
+    oof_good = np.full((n_samples, n_classes), 0.1)
+    oof_good[np.arange(n_samples), y] = 0.8
+
+    mock_generate_oof.return_value = (
+        [oof_zero, oof_good],
+        np.array([0.33, 0.33])
+    )
+
+    estimators = [
+        ("zero", LogisticRegression()),
+        ("good", LogisticRegression()),
+    ]
+
+    selector = GreedyEnsembleSelector(estimators, metric="f1_score", cv=3, max_ensemble_size=1)
+    selector.fit(X, y)
+
+    assert selector.selected_indices_ == [1]
+    assert selector.selected_names_ == ["good"]

@@ -1,5 +1,3 @@
-from statistics import LinearRegression
-
 import numpy as np
 import pytest
 from sklearn.base import BaseEstimator, ClassifierMixin
@@ -212,7 +210,6 @@ def test_generate_oof_probas_mismatched_length(make_basic_estimators):
     (0, ValueError),
     (-3, ValueError),
 ])
-
 def test_generate_oof_probas_invalid_cv(make_binary_data, make_basic_estimators, invalid_cv, match_err):
     X, y = make_binary_data
     with pytest.raises(match_err):

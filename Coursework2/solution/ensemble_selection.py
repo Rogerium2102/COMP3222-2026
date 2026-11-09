@@ -4,13 +4,12 @@ from typing import Callable, Any
 import numpy as np
 from sklearn.base import ClassifierMixin, BaseEstimator, clone
 from sklearn.exceptions import NotFittedError
-from sklearn.metrics import accuracy_score, log_loss
+from sklearn.metrics import accuracy_score, log_loss, roc_auc_score, f1_score
 from sklearn.utils.validation import check_is_fitted
 
-from pool import generate_oof_probas, log_loss_normalized
+from pool import generate_oof_probas, log_loss_normalised
 
 class GreedyEnsembleSelector(ClassifierMixin, BaseEstimator):
-
     def __init__(
             self,
             estimators,
@@ -19,16 +18,46 @@ class GreedyEnsembleSelector(ClassifierMixin, BaseEstimator):
             metric="accuracy",
             random_state=None
     ):
+        """
+        My implementation of Greedy Ensemble Selection
+        Args:
+        estimators - a list of classifiers
+        cv - Cross-validation (default: 5)
+        max_ensemble_size - the maximum number of estimators that the selector can pick (default: None (Infinite))
+        metric - The metric to evaluate classifiers on (default: accuracy)
+        random_state - The random state to use in each classifier.
+
+        Supported metrics:
+            accuracy - (REQUESTED)
+            roc_auc - Good for sets with class imbalance.
+            f1_score - Good for multiclass problems by balancing precision and recall.
+            log_loss - (REQUESTED)
+
+        """
         self.estimators = estimators
         self.cv = cv
         self.max_ensemble_size = max_ensemble_size
         self.metric = metric
         self.random_state = random_state
-        self.supported_metric = ['accuracy','log_loss']
-        if self.metric not in self.supported_metric:
+        self.supported_metrics = ["accuracy","log_loss","roc_auc","f1_score"]
+        if self.metric not in self.supported_metrics:
             raise ValueError(f"Metric {self.metric} is not supported.")
 
     def fit(self, X, y):
+        """
+        Fits the Ensemble Selector
+
+        Args:
+            X - feature matrix
+            y - target vector
+
+        Returns:
+            self
+
+        Raises:
+            TypeError
+            ValueError
+        """
         self.has_fit_ = True
         y = np.asarray(y).ravel() ## 1D Array
         self.classes_ = np.unique(y)
@@ -50,7 +79,7 @@ class GreedyEnsembleSelector(ClassifierMixin, BaseEstimator):
                 standardized_oof.append(arr)
         oof_matrix = np.array(standardized_oof, dtype=np.float64)
         n_estimators = len(self.estimators)
-        is_accuracy = (self.metric == "accuracy")
+        is_higher_good = self.metric in ["accuracy","roc_auc","f1_score"]
         max_size = (
             self.max_ensemble_size
             if self.max_ensemble_size is not None
@@ -58,21 +87,49 @@ class GreedyEnsembleSelector(ClassifierMixin, BaseEstimator):
         )
 
         def evaluate_subset(indices):
+            """
+            Calculates the score for the chosen metric
+
+            Args:
+                indices - A list of indices to filter by.
+
+            Returns:
+                float | int - The score for the chosen metric
+                None - Impossible event
+            """
             blended_probs = np.mean(oof_matrix[indices], axis=0)
-            if is_accuracy:
+            if self.metric == "accuracy":
                 preds = self.classes_[np.argmax(blended_probs, axis = 1)]
                 return accuracy_score(y, preds)
-            else:
+            elif self.metric == "log_loss":
                 eps = 1e-15
                 blended_probs = np.clip(blended_probs, eps, 1 - eps)
-                return log_loss_normalized(y, blended_probs, self.classes_)
-
+                return log_loss_normalised(y, blended_probs, self.classes_)
+            elif self.metric == "roc_auc":
+                if n_classes == 2:
+                    return roc_auc_score(y, blended_probs[:,1])
+                else:
+                    return roc_auc_score(y, blended_probs, multi_class='ovr', labels=self.classes_)
+            elif self.metric == "f1_score":
+                preds = self.classes_[np.argmax(blended_probs, axis = 1)]
+                avg_method = 'macro' if n_classes > 2 else 'binary'
+                return f1_score(y, preds, average=avg_method)
+            return None
 
         def has_improved(current, best):
-            return (is_accuracy and current > best) or (not is_accuracy and current < best)
+            """
+            Determines if the score has improved over the best score
+            Args:
+                current (Float) - the current score
+                best (Float) - the best score
+
+            Returns:
+                Boolean (True | False)
+            """
+            return (is_higher_good and current > best) or (not is_higher_good and current < best)
 
         best_initial_idx = None
-        best_score = -np.inf if is_accuracy else np.inf
+        best_score = -np.inf if is_higher_good else np.inf
         for i in range(n_estimators):
             score = evaluate_subset([i])
             if has_improved(score, best_score):
@@ -121,12 +178,36 @@ class GreedyEnsembleSelector(ClassifierMixin, BaseEstimator):
         return self
 
     def predict(self, X):
+        """
+        Predicts a vector based on the given feature matrix
+
+        Args:
+            X - feature matrix
+
+        Returns:
+              (np.array) - Predicition Matrix
+
+        Raises:
+              NotFittedError - When fit hasn't been called
+        """
         check_is_fitted(self, attributes=['estimators_','classes_'])
         probas = self.predict_proba(X)
         return self.classes_[np.argmax(probas, axis = 1)]
 
 
     def predict_proba(self, X):
+        """
+        Predicts a vector based on the given feature matrix and returns the probability that it belongs to a class.
+
+        Args:
+            X - feature matrix
+
+        Returns:
+              (np.array) - Probabilities that it belongs to a class
+
+        Raises:
+              NotFittedError - When fit hasn't been called
+        """
         check_is_fitted(self, attributes=['estimators_','classes_'])
 
         raw_probas = [estimator.predict_proba(X) for estimator in self.estimators_]

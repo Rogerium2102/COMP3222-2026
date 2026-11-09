@@ -7,6 +7,20 @@ from sklearn.base import clone, is_classifier, ClassifierMixin, BaseEstimator
 from collections.abc import Iterable
 
 def search_for_classifier(data) -> Dict[str, ClassifierMixin]:
+    """
+    Given classifiers of some form this function will create a dictionary of name, classifier pairs. It will detect issues
+    where classifiers came in an invalid format
+
+    Args:
+        Data - list of classifiers in some format
+
+    Returns:
+        Dictionary with classifier name as key and classifier object as value
+
+    Raises:
+        TypeError - where the data types are not correct
+        ValueError - where the values of those types are not correct
+    """
     classifierPairing = {}
     if not isinstance(data, Iterable):
         raise TypeError("data must be a list of tuples of form (str, classifier)")
@@ -35,6 +49,21 @@ def generate_oof_probas(
         cv=5,
         random_state=None
 ) -> tuple[np.ndarray, np.ndarray]:
+    """
+    Generates the Out-Of-Fold Probabilities of data on a series of estimators.
+    Args:
+        estimators - A list of classifiers generate OOF probabilities on.
+        X - feature matrix
+        y - target vector
+        cv - Cross-validation k (defines the number of splits in the k-fold)
+        random_state - random_state for each estimator
+    Returns:
+        OOF Probabilities
+        How each classifier scored in log_loss metric
+    Raises:
+        ValueError - where the values are incorrect
+        TypeError - When CV is not an integer or a TypeError occurred in search_for_classifier.
+    """
     estimators_searched = search_for_classifier(estimators)
     X = np.asarray(X)
     y = np.asarray(y)
@@ -65,9 +94,20 @@ def generate_oof_probas(
             for j, cls in enumerate(clf.classes_):
                 class_idx = np.where(classes == cls)[0][0]
                 oof_probas[i, test_idx, class_idx] = fold_probas[:, j]
-        scores[i] = log_loss_normalized(y, oof_probas[i], classes)
+        scores[i] = log_loss_normalised(y, oof_probas[i], classes)
     return oof_probas, scores
 
-def log_loss_normalized(y, probs, classes):
+def log_loss_normalised(y, probs, classes):
+    """
+    Returns the normalised log loss metric
+
+    Args:
+        y - target vector
+        probs - probability vector
+        classes - class labels
+
+    Returns:
+        log loss metric (Float)
+    """
     blended_probs = probs / np.sum(probs, axis=1, keepdims=True)
     return log_loss(y, blended_probs, labels=classes)
